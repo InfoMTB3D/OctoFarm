@@ -2,8 +2,8 @@ import "@babel/polyfill";
 import OctoFarmClient from "./lib/octofarm.js";
 import Calc from "./lib/functions/calc.js";
 import FileManager from "./lib/modules/fileManager.js";
-import { dragAndDropEnable } from "./lib/functions/dragAndDrop.js";
-import { returnDropDown, selectFilament } from "./lib/modules/filamentGrab.js";
+import {dragAndDropEnable} from "./lib/functions/dragAndDrop.js";
+import {returnDropDown, selectFilament} from "./lib/modules/filamentGrab.js";
 import FileSorting from "./lib/modules/fileSorting.js";
 
 let lastId = null;
@@ -108,11 +108,11 @@ class Manager {
             </div>
           </a>
               
-      `
+      `,
       );
       //Setup for first printer
       const listItem = document.getElementById(
-        `fileManagerPrinter-${printer._id}`
+        `fileManagerPrinter-${printer._id}`,
       );
 
       listItem.addEventListener("click", (e) => {
@@ -125,7 +125,7 @@ class Manager {
 
       for (let i = 0; i < printer.currentProfile.extruder.count; i++) {
         const filamentDrop = document.getElementById(
-          "tool" + i + "-" + printer._id
+          "tool" + i + "-" + printer._id,
         );
         filamentDrop.innerHTML = "";
         filamentDropDown.forEach((filament) => {
@@ -149,7 +149,7 @@ class Manager {
               "printers/printerInfo",
               {
                 i: lastId,
-              }
+              },
             );
             updatePrinter = await updatePrinter.json();
             FileManager.refreshFiles(updatePrinter);
@@ -160,7 +160,7 @@ class Manager {
       if (index === 0) {
         lastId = printer._id;
         const item = document.getElementById(
-          "fileManagerPrinter-" + printer._id
+          "fileManagerPrinter-" + printer._id,
         );
         item.classList.add("bg-dark");
         item.classList.remove("bg-secondary");
@@ -198,7 +198,7 @@ class Manager {
   static async updatePrinterList(id) {
     let fileList = document.getElementById("fileBody");
     const fileManagerManagement = document.getElementById(
-      "fileManagerManagement"
+      "fileManagerManagement",
     );
     if (fileManagerManagement) {
       fileList = fileManagerManagement;
@@ -238,7 +238,7 @@ class Manager {
             <div id="fileList-${id}" class="list-group" style="max-height:100%; overflow-y:scroll; min-height:1000px;" data-jplist-group="files">
                 
             </div>
-        `
+        `,
     );
     let printer = await OctoFarmClient.post("printers/printerInfo", {
       i: id,
@@ -264,11 +264,11 @@ class Manager {
     fileButtons.fileManager.fileFolderCount.innerHTML = `<i class="fas fa-file"></i> ${printer.fileList.filecount} <i class="fas fa-folder"></i> ${printer.fileList.folderCount}`;
     if (typeof printer.storage !== "undefined") {
       fileButtons.fileManager.printerStorage.innerHTML = `<i class="fas fa-hdd"></i> ${Calc.bytes(
-        printer.storage.free
+        printer.storage.free,
       )} / ${Calc.bytes(printer.storage.total)}`;
     } else {
       fileButtons.fileManager.printerStorage.innerHTML = `<i class="fas fa-hdd"></i> ${Calc.bytes(
-        0
+        0,
       )} / ${Calc.bytes(0)}`;
     }
 
@@ -285,7 +285,7 @@ class Manager {
       "change",
       function () {
         FileManager.handleFiles(this.files, printer, "print");
-      }
+      },
     );
     fileButtons.fileManager.back.addEventListener("click", (e) => {
       FileManager.openFolder(undefined, undefined, printer);
@@ -295,4 +295,5 @@ class Manager {
     });
   }
 }
+
 Manager.init();

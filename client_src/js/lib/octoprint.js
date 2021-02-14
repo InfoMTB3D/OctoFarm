@@ -1,7 +1,5 @@
 import UI from "./functions/ui.js";
 import OctoFarmClient from "./octofarm.js";
-import Validate from "./functions/validate.js";
-import { returnDropDown } from "./modules/filamentGrab.js";
 
 export default class OctoPrintClient {
   static get(printer, item) {
@@ -122,24 +120,26 @@ export default class OctoPrintClient {
               "success",
               `${printer.printerName}: ${action} was successful`,
               3000,
-              "clicked"
+              "clicked",
             );
           } else {
             UI.createAlert(
               "error",
               `${printer.printerName}: ${action} was unsuccessful. Please make sure printer is connected and commands are setup in Settings -> Server.`,
               3000,
-              "clicked"
+              "clicked",
             );
           }
         }
       },
     });
   }
+
   static async systemNoConfirm(printer, action) {
     const url = "system/commands/core/" + action;
     return await OctoPrintClient.post(printer, url);
   }
+
   static async move(element, printer, action, axis, dir) {
     const flashReturn = function () {
       element.target.classList = "btn btn-light";
@@ -220,14 +220,14 @@ export default class OctoPrintClient {
           "success",
           `${printer.printerName}: ${action} completed`,
           3000,
-          "clicked"
+          "clicked",
         );
       } else {
         UI.createAlert(
           "success",
           `${printer.printerName}: ${action} actioned`,
           3000,
-          "clicked"
+          "clicked",
         );
       }
     } else {
@@ -235,7 +235,7 @@ export default class OctoPrintClient {
         "error",
         `${printer.printerName}: ${action} failed`,
         3000,
-        "clicked"
+        "clicked",
       );
     }
   }
@@ -306,7 +306,7 @@ export default class OctoPrintClient {
               const post = await OctoPrintClient.post(
                 printer,
                 "printer/tool",
-                offset
+                offset,
               );
             }
             await OctoPrintClient.post(printer, "printer/printhead", feed);
@@ -343,7 +343,7 @@ export default class OctoPrintClient {
         "success",
         `${printer.printerName}: ${opts.command}ion attempt was successful`,
         3000,
-        "click"
+        "click",
       );
       if (command === "connect") {
         document.getElementById("pmSerialPort").disabled = true;
@@ -362,7 +362,7 @@ export default class OctoPrintClient {
         "error",
         `${printer.printerName}: could not ${opts.command}.`,
         3000,
-        "click"
+        "click",
       );
     }
   }
@@ -375,7 +375,7 @@ export default class OctoPrintClient {
       url = url.replace("[PrinterAPI]", printer.apikey);
     }
     if (typeof command === "undefined" || command.length === 0) {
-      try{
+      try {
         const post = await fetch(url, {
           method: "GET",
           headers: {
@@ -385,26 +385,26 @@ export default class OctoPrintClient {
         });
         if (post.status !== 200 || post.status !== 204) {
           UI.createAlert(
-              "error",
-              `${printer.printerName}: Could not complete ${action}`,
-              3000
+            "error",
+            `${printer.printerName}: Could not complete ${action}`,
+            3000,
           );
         } else {
           UI.createAlert(
-              "success",
-              `${printer.printerName}: Successfully completed ${action}`,
-              3000
+            "success",
+            `${printer.printerName}: Successfully completed ${action}`,
+            3000,
           );
         }
-      }catch(e){
+      } catch (e) {
         UI.createAlert(
-            "error",
-            `${printer.printerName}: Could not complete ${action} - Error: ${e}`,
-            3000
+          "error",
+          `${printer.printerName}: Could not complete ${action} - Error: ${e}`,
+          3000,
         );
       }
     } else {
-      try{
+      try {
         const post = await fetch(url, {
           method: "POST",
           headers: {
@@ -415,22 +415,22 @@ export default class OctoPrintClient {
         });
         if (post.status !== 200 || post.status !== 204) {
           UI.createAlert(
-              "error",
-              `${printer.printerName}: Could not complete ${action}`,
-              3000
+            "error",
+            `${printer.printerName}: Could not complete ${action}`,
+            3000,
           );
         } else {
           UI.createAlert(
-              "success",
-              `${printer.printerName}: Successfully completed ${action}`,
-              3000
+            "success",
+            `${printer.printerName}: Successfully completed ${action}`,
+            3000,
           );
         }
-      }catch(e){
+      } catch (e) {
         UI.createAlert(
-            "error",
-            `${printer.printerName}: Could not complete ${action} - Error: ${e}`,
-            3000
+          "error",
+          `${printer.printerName}: Could not complete ${action} - Error: ${e}`,
+          3000,
         );
       }
 
@@ -475,7 +475,7 @@ export default class OctoPrintClient {
         }
 
         const powerStatusPrinter = document.getElementById(
-          "printerStatus-" + printer._id
+          "printerStatus-" + printer._id,
         );
         if (powerStatusPrinter) {
           if (status === "No Status") {
