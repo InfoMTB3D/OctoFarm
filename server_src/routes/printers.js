@@ -13,7 +13,7 @@ const printerClean = require("../lib/dataFunctions/printerClean.js");
 
 const { PrinterClean } = printerClean;
 
-const { Script } = require("../lib/serverCommands.js");
+const { Script } = require("../lib/serverScripts.js");
 
 const _ = require("lodash");
 
@@ -105,6 +105,12 @@ router.post("/updateSettings", ensureAuthenticated, async (req, res) => {
 
   res.send({ status: updateSettings.status, printer: updateSettings.printer });
 });
+router.get("/killPowerSettings/:id", ensureAuthenticated, async (req, res) => {
+  // Check required fields
+  const printerID = req.params.id;
+  const updateSettings = await Runner.killPowerSettings(printerID);
+  res.send({ updateSettings });
+});
 router.get("/groups", ensureAuthenticated, async (req, res) => {
   const printers = await Runner.returnFarmPrinters();
   const groups = [];
@@ -125,6 +131,7 @@ router.post("/printerInfo", ensureAuthenticated, async (req, res) => {
     res.send(printers);
   } else {
     const index = _.findIndex(printers, function (o) {
+      //Make sure ID's are both strings to stop recursion issues
       return o._id == id;
     });
     const returnPrinter = {

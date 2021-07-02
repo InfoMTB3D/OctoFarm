@@ -12,28 +12,20 @@ const UserDB = require("../models/User.js");
 const PrinterDB = require("../models/Printer.js");
 const AlertsDB = require("../models/Alerts.js");
 const GcodeDB = require("../models/CustomGcode.js");
-
 const Logger = require("../lib/logger.js");
-
 const logger = new Logger("OctoFarm-API");
-
 const runner = require("../runners/state.js");
 const multer = require("multer");
-
 const { Runner } = runner;
+const { SystemRunner } = require("../runners/systemInfo.js");
+const { SettingsClean } = require("../lib/dataFunctions/settingsClean.js");
+const { Logs } = require("../lib/serverLogs.js");
+const { SystemCommands } = require("../lib/serverCommands.js");
 
-const systemInfo = require("../runners/systemInfo.js");
-
-const SystemInfo = systemInfo.SystemRunner;
-
-const settingsClean = require("../lib/dataFunctions/settingsClean.js");
-
-const { SettingsClean } = settingsClean;
-
-const serverCommands = require("../lib/serverCommands.js");
-
-const { Logs } = serverCommands;
-const { SystemCommands } = serverCommands;
+const {
+  checkReleaseAndLogUpdate,
+  getUpdateNotificationIfAny,
+} = require("../runners/softwareUpdateChecker.js");
 
 module.exports = router;
 
@@ -51,21 +43,47 @@ const Storage = multer.diskStorage({
 
 const upload = multer({ storage: Storage });
 
-router.get("/server/get/logs", ensureAuthenticated, async (req, res) => {
+router.get("/server/logs", ensureAuthenticated, async (req, res) => {
   const serverLogs = await Logs.grabLogs();
   res.send(serverLogs);
 });
-router.get("/server/download/logs/:name", ensureAuthenticated, (req, res) => {
+router.get("/server/logs/:name", ensureAuthenticated, (req, res) => {
   const download = req.params.name;
   const file = `./logs/${download}`;
   res.download(file, download); // Set disposition and send it.
 });
+router.post(
+  "/server/logs/generateLogDump",
+  ensureAuthenticated,
+  async (req, res) => {
+    // Will use in a future update to configure the dump.
+    // let settings = req.body;
+    // Generate the log package
+    let zipDumpResponse = {
+      status: "error",
+      msg:
+        "Unable to generate zip file, please check 'OctoFarm-API.log' file for more information.",
+      zipDumpPath: "",
+    };
+
+    try {
+      zipDumpResponse.zipDumpPath = await Logs.generateOctoFarmLogDump();
+      zipDumpResponse.status = "success";
+      zipDumpResponse.msg =
+        "Successfully generated zip file, please click the download button.";
+    } catch (e) {
+      logger.error("Error Generating Log Dump Zip File | ", e);
+    }
+
+    res.send(zipDumpResponse);
+  }
+);
+
 router.get(
   "/server/delete/database/:name",
   ensureAuthenticated,
   async (req, res) => {
     const databaseName = req.params.name;
-    console.log(databaseName);
     await Runner.pause();
     if (databaseName === "nukeEverything") {
       await ServerSettingsDB.deleteMany({});
@@ -103,8 +121,75 @@ router.get(
     }
   }
 );
-router.get("/server/restart", ensureAuthenticated, (req, res) => {
-  SystemCommands.rebootOctoFarm();
+router.get(
+  "/server/get/database/:name",
+  ensureAuthenticated,
+  async (req, res) => {
+    const databaseName = req.params.name;
+    logger.info("Client requests export of " + databaseName);
+    let returnedObjects = [];
+    if (databaseName === "FilamentDB") {
+      returnedObjects.push(await ProfilesDB.find({}));
+      returnedObjects.push(await SpoolsDB.find({}));
+    } else {
+      returnedObjects.push(await eval(databaseName).find({}));
+    }
+    logger.info("Returning to client database object: " + databaseName);
+    res.send({ databases: returnedObjects });
+  }
+);
+router.post("/server/restart", ensureAuthenticated, async (req, res) => {
+  let serviceRestarted = false;
+  try {
+    serviceRestarted = await SystemCommands.rebootOctoFarm();
+  } catch (e) {
+    logger.error(e);
+  }
+  res.send(serviceRestarted);
+});
+
+router.post(
+  "/server/update/octofarm",
+  ensureAuthenticated,
+  async (req, res) => {
+    let clientResponse = {
+      haveWeSuccessfullyUpdatedOctoFarm: false,
+      statusTypeForUser: "error",
+      message: "",
+    };
+    let force = req?.body;
+    if (
+      !force ||
+      typeof force?.forcePull !== "boolean" ||
+      typeof force?.doWeInstallPackages !== "boolean"
+    ) {
+      res.sendStatus(400);
+      throw new Error(
+        "forceCheck object not correctly provided or not boolean"
+      );
+    }
+
+    try {
+      clientResponse = await SystemCommands.checkIfOctoFarmNeedsUpdatingAndUpdate(
+        clientResponse, force
+      );
+    } catch (e) {
+      clientResponse.message =
+        "Issue with updating | " + e?.message.replace(/(<([^>]+)>)/gi, "");
+      // Log error with html tags removed if contained in response message
+      logger.error(
+        "Issue with updating | ",
+        e?.message.replace(/(<([^>]+)>)/gi, "")
+      );
+    } finally {
+      res.send(clientResponse);
+    }
+  }
+);
+router.get("/server/update/check", ensureAuthenticated, async (req, res) => {
+  await checkReleaseAndLogUpdate();
+  const softwareUpdateNotification = getUpdateNotificationIfAny();
+  res.send(softwareUpdateNotification);
 });
 router.get("/client/get", ensureAuthenticated, (req, res) => {
   ClientSettingsDB.find({}).then((checked) => {
@@ -127,7 +212,6 @@ router.post("/client/update", ensureAuthenticated, (req, res) => {
     checked[0].save().then(() => {
       SettingsClean.start();
     });
-    console.log("HELLO");
     res.send({ msg: "Settings Saved" });
   });
 });
@@ -193,53 +277,56 @@ router.post("/server/update", ensureAuthenticated, (req, res) => {
     }
   });
 });
+
+/**
+ * Acquire system information from system info runner
+ */
 router.get("/sysInfo", ensureAuthenticated, async (req, res) => {
-  const systemInformation = await SystemInfo.returnInfo();
+  const systemInformation = await SystemRunner.returnInfo();
   let sysInfo = null;
-  if (typeof systemInformation !== "undefined") {
+
+  if (!!systemInformation) {
     sysInfo = {
       osInfo: systemInformation.osInfo,
       cpuInfo: systemInformation.cpuInfo,
       cpuLoad: systemInformation.cpuLoad,
       memoryInfo: systemInformation.memoryInfo,
       sysUptime: systemInformation.sysUptime,
-      sysProcess: systemInformation.sysProcess,
+      currentProcess: systemInformation.currentProcess,
       processUptime: systemInformation.processUptime,
     };
   }
   res.send(sysInfo);
 });
-router.get("/customGcode/delete/:id", ensureAuthenticated, async(req, res) => {
+
+router.get("/customGcode/delete/:id", ensureAuthenticated, async (req, res) => {
   const scriptId = req.params.id;
   GcodeDB.findByIdAndDelete(scriptId, function (err) {
-    if(err){
-      res.send(err)
-    }
-    else{
-      res.send(scriptId)
+    if (err) {
+      res.send(err);
+    } else {
+      res.send(scriptId);
     }
   });
 });
-router.get("/customGcode/edit/:id", ensureAuthenticated, async(req, res) => {
-  const scriptId = req.params.id;
+router.post("/customGcode/edit", ensureAuthenticated, async (req, res) => {
   const newObj = req.body;
-  GcodeDB.findByIdAndUpdate({scriptId},newObj, function(err, result){
-    if(err){
-      res.send(err)
-    }
-    else{
-      res.send(result)
-    }
-
-  })
+  let script = await GcodeDB.findById(newObj.id);
+  script.gcode = newObj.gcode;
+  script.name = newObj.name;
+  script.description = newObj.description;
+  script.save();
+  res.send(script);
 });
-router.post("/customGcode", ensureAuthenticated, async(req, res) => {
-  let newScript = req.body
-  const saveScript = new GcodeDB(newScript)
-  console.log(saveScript)
-  saveScript.save().then(res.send(saveScript)).catch(e => res.send(e));
+router.post("/customGcode", ensureAuthenticated, async (req, res) => {
+  let newScript = req.body;
+  const saveScript = new GcodeDB(newScript);
+  saveScript
+    .save()
+    .then(res.send(saveScript))
+    .catch((e) => res.send(e));
 });
-router.get("/customGcode", ensureAuthenticated, async(req, res) => {
+router.get("/customGcode", ensureAuthenticated, async (req, res) => {
   const all = await GcodeDB.find();
-  res.send(all)
-})
+  res.send(all);
+});

@@ -803,7 +803,7 @@ async function updateState(printer, clientSettings, view) {
   if (typeof printer.currentJob !== "undefined") {
     let progress = 0;
     if (typeof printer.currentJob.progress === "number") {
-      progress = printer.currentJob.progress.toFixed(0);
+      progress = printer.currentJob.progress;
     }
     UI.doesElementNeedUpdating(progress + "%", elements.progress, "innerHTML");
     elements.progress.style.width = progress + "%";
@@ -996,22 +996,19 @@ async function updateState(printer, clientSettings, view) {
     }
   }
   if (Array.isArray(printer.selectedFilament)) {
-    const spoolList = "";
     for (let i = 0; i < printer.selectedFilament.length; i++) {
       const tool = document.getElementById(`${printer._id}-spool-${i}`);
       if (printer.selectedFilament[i] !== null) {
         const filamentManager = await checkFilamentManager();
-        if (filamentManager) {
-          tool.innerHTML = `${printer.selectedFilament[i].spools.material}`;
-        } else {
+        if (tool) {
           tool.innerHTML = `${printer.selectedFilament[i].spools.material}`;
         }
       } else {
-        tool.innerHTML = "No Spool";
+        if (tool) {
+          tool.innerHTML = "No Spool";
+        }
       }
     }
-  } else {
-    tool.innerHTML = "No Spool";
   }
 
   let hideClosed = "";

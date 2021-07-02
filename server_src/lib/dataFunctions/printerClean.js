@@ -13,6 +13,7 @@ const { HistoryClean } = historyClean;
 const FarmStatistics = require("../../models/FarmStatistics.js");
 
 const RoomData = require("../../models/roomData.js");
+const PrinterGroup = require("../../models/PrinterGroup.js");
 
 const ErrorLogs = require("../../models/ErrorLog.js");
 
@@ -21,6 +22,10 @@ const TempHistory = require("../../models/TempHistory.js");
 const printerTicker = require("../../runners/printerTicker.js");
 
 const { PrinterTicker } = printerTicker;
+
+const Logger = require("../logger.js");
+const logger = new Logger("OctoFarm-InformationCleaning");
+
 
 const currentOperations = {
   operations: [],
@@ -108,7 +113,7 @@ const arrayTotal = [];
 const printerControlList = [];
 let printerFilamentList = [];
 
-let interval = false;
+
 
 let printerConnectionLogs = [];
 
@@ -150,6 +155,307 @@ class PrinterClean {
   static returnDashboardStatistics() {
     return dashboardStatistics;
   }
+  static checkNested(nameKey, myArray) {
+    try {
+      for (var i = 0; i < myArray.length; i++) {
+        if (myArray[i].name === nameKey) {
+          return myArray[i];
+        }
+      }
+    } catch (e) {
+      logger.error("Couldn't check nested....", JSON.stringify(e));
+    }
+  }
+  static checkNestedIndex(nameKey, myArray) {
+    try {
+      for (var i = 0; i < myArray.length; i++) {
+        if (myArray[i].name === nameKey) {
+          return i;
+        }
+      }
+    } catch (e) {
+      logger.error("Couldn't check nested index...", JSON.stringify(e));
+    }
+  }
+  static async generatePrinterStatistics(id) {
+    let currentHistory = JSON.parse(
+      JSON.stringify(await HistoryClean.returnHistory())
+    );
+    let currentPrinters = printersInformation;
+    const i = _.findIndex(currentPrinters, function (o) {
+      return JSON.stringify(o._id) === JSON.stringify(id);
+    });
+    let printer = Object.assign({}, currentPrinters[i]);
+
+    // Calculate time printer has existed...
+    let dateAdded = new Date(printer.dateAdded);
+    let todaysDate = new Date();
+    let dateDifference = parseInt(todaysDate - dateAdded);
+    let sevenDaysAgo = new Date(todaysDate.getTime() - 7 * 24 * 60 * 60 * 1000);
+    let ninetyDaysAgo = new Date(
+      todaysDate.getTime() - 90 * 24 * 60 * 60 * 1000
+    );
+    // Filter down the history arrays for total/daily/weekly
+    let historyDaily = [];
+    let historyWeekly = [];
+
+    // Create the statistics object to be sent back to client
+    let printerStatistics = {
+      printerName: printer.printerName,
+      timeTotal: dateDifference,
+      activeTimeTotal: printer.currentActive,
+      idleTimeTotal: printer.currentIdle,
+      offlineTimeTotal: printer.currentOffline,
+      printerUtilisation: [],
+      filamentUsedWeightTotal: [],
+      filamentUsedLengthTotal: [],
+      printerCostTotal: [],
+      filamentCostTotal: [],
+      filamentUsedWeightWeek: [],
+      filamentUsedLengthWeek: [],
+      printerCostWeek: [],
+      filamentCostWeek: [],
+      filamentUsedWeightDay: [],
+      filamentUsedLengthDay: [],
+      printerCostDay: [],
+      filamentCostDay: [],
+      printSuccessTotal: [],
+      printCancelTotal: [],
+      printErrorTotal: [],
+      printSuccessDay: [],
+      printCancelDay: [],
+      printErrorDay: [],
+      printerSuccessWeek: [],
+      printerCancelWeek: [],
+      printerErrorWeek: [],
+      printerResendRatioTotal: [],
+      printerResendRatioDaily: [],
+      printerResendRatioWeekly: [],
+      historyByDay: [],
+      historyByDayIncremental: [],
+      octoPrintSystemInfo: printer.octoPrintSystemInfo,
+    };
+    //Generate utilisation chart
+    const totalTime =
+      printer.currentActive + printer.currentIdle + printer.currentOffline;
+    printerStatistics.printerUtilisation.push(
+      (printer.currentActive / totalTime) * 100
+    );
+    printerStatistics.printerUtilisation.push(
+      (printer.currentIdle / totalTime) * 100
+    );
+    printerStatistics.printerUtilisation.push(
+      (printer.currentOffline / totalTime) * 100
+    );
+
+    currentHistory.forEach((h) => {
+      // Parse the date from history....
+      let dateSplit = h.endDate.split(" ");
+      const months = [
+        "Jan",
+        "Feb",
+        "Mar",
+        "Apr",
+        "May",
+        "Jun",
+        "Jul",
+        "Aug",
+        "Sep",
+        "Oct",
+        "Nov",
+        "Dec",
+      ];
+      let month = months.indexOf(dateSplit[1]);
+      let dateString = `${parseInt(dateSplit[3])}-${month + 1}-${parseInt(
+        dateSplit[2]
+      )}`;
+      let dateParse = new Date(dateString);
+      if (h.printer === printerStatistics.printerName) {
+        //Collate totals
+        printerStatistics.filamentUsedWeightTotal.push(h.totalWeight);
+        printerStatistics.filamentUsedLengthTotal.push(h.totalLength);
+        printerStatistics.printerCostTotal.push(parseFloat(h.totalCost));
+        printerStatistics.filamentCostTotal.push(h.spoolCost);
+        if (typeof h.resend !== "undefined") {
+          printerStatistics.printerResendRatioTotal.push(h.resend.ratio);
+        }
+
+        if (h.state.includes("success")) {
+          printerStatistics.printSuccessTotal.push(1);
+        } else if (h.state.includes("warning")) {
+          printerStatistics.printCancelTotal.push(1);
+        } else if (h.state.includes("danger")) {
+          printerStatistics.printErrorTotal.push(1);
+        }
+
+        if (dateParse.getTime() > todaysDate.getTime()) {
+          historyDaily.push(h);
+        }
+        // Capture Weekly..
+        if (dateParse.getTime() > sevenDaysAgo.getTime()) {
+          historyWeekly.push(h);
+        }
+        let checkNested = this.checkNested(
+          "Success",
+          printerStatistics.historyByDay
+        );
+        //
+        if (typeof checkNested !== "undefined") {
+          let checkNestedIndexHistoryRates = null;
+          if (h.state.includes("success")) {
+            checkNestedIndexHistoryRates = this.checkNestedIndex(
+              "Success",
+              printerStatistics.historyByDay
+            );
+          } else if (h.state.includes("warning")) {
+            checkNestedIndexHistoryRates = this.checkNestedIndex(
+              "Cancelled",
+              printerStatistics.historyByDay
+            );
+          } else if (h.state.includes("danger")) {
+            checkNestedIndexHistoryRates = this.checkNestedIndex(
+              "Failed",
+              printerStatistics.historyByDay
+            );
+          } else {
+            return;
+          }
+
+          //Check if more than 30 days ago...
+          if (dateParse.getTime() > ninetyDaysAgo.getTime()) {
+            printerStatistics.historyByDay[
+              checkNestedIndexHistoryRates
+              ].data.push({
+              x: dateParse,
+              y: 1,
+            });
+            // printerStatistics.historyByDayIncremental[
+            //   checkNestedIndexHistoryRates
+            // ].data.push({
+            //   x: dateParse,
+            //   y: 1,
+            // });
+          }
+        } else {
+          let successKey = {
+            name: "Success",
+            data: [],
+          };
+          let cancellKey = {
+            name: "Cancelled",
+            data: [],
+          };
+          let failedKey = {
+            name: "Failed",
+            data: [],
+          };
+          if (typeof printerStatistics.historyByDay[0] === "undefined") {
+            printerStatistics.historyByDay.push(successKey);
+            printerStatistics.historyByDay.push(cancellKey);
+            printerStatistics.historyByDay.push(failedKey);
+            // printerStatistics.historyByDayIncremental.push(successKey);
+            // printerStatistics.historyByDayIncremental.push(cancellKey);
+            // printerStatistics.historyByDayIncremental.push(failedKey);
+          }
+        }
+      }
+    });
+
+    // Collate daily stats
+    historyDaily.forEach((d) => {
+      printerStatistics.filamentUsedWeightDay.push(d.totalWeight);
+      printerStatistics.filamentUsedLengthDay.push(d.totalLength);
+      printerStatistics.printerCostDay.push(parseFloat(d.totalCost));
+      printerStatistics.filamentCostDay.push(d.spoolCost);
+      if (typeof d.resend !== "undefined") {
+        printerStatistics.printerResendRatioDaily.push(d.resend.ratio);
+      }
+
+      if (d.state.includes("success")) {
+        printerStatistics.printSuccessDay.push(1);
+      } else if (d.state.includes("warning")) {
+        printerStatistics.printCancelDay.push(1);
+      } else if (d.state.includes("danger")) {
+        printerStatistics.printErrorDay.push(1);
+      }
+    });
+
+    // Collate weekly stats
+    historyWeekly.forEach((w) => {
+      printerStatistics.filamentUsedWeightWeek.push(w.totalWeight);
+      printerStatistics.filamentUsedLengthWeek.push(w.totalLength);
+      printerStatistics.printerCostWeek.push(parseFloat(w.totalCost));
+      printerStatistics.filamentCostWeek.push(w.spoolCost);
+      if (typeof w.resend !== "undefined") {
+        printerStatistics.printerResendRatioWeekly.push(w.resend.ratio);
+      }
+
+      if (w.state.includes("success")) {
+        printerStatistics.printerSuccessWeek.push(1);
+      } else if (w.state.includes("warning")) {
+        printerStatistics.printerCancelWeek.push(1);
+      } else if (w.state.includes("danger")) {
+        printerStatistics.printerErrorWeek.push(1);
+      }
+    });
+    // Reduce all the values and update the variable.
+    Object.keys(printerStatistics).forEach(function (key) {
+      if (Array.isArray(printerStatistics[key])) {
+        if (
+          key !== "historyByDay" &&
+          key !== "historyByDayIncremental" &&
+          key !== "printerUtilisation"
+        ) {
+          printerStatistics[key] = printerStatistics[key].reduce(
+            (a, b) => a + b,
+            0
+          );
+        }
+      }
+    });
+    function convertIncremental(input) {
+      try {
+        let usageWeightCalc = 0;
+        let newObj = [];
+        for (let i = 0; i < input.length; i++) {
+          if (typeof newObj[i - 1] !== "undefined") {
+            usageWeightCalc = newObj[i - 1].y + input[i].y;
+          } else {
+            usageWeightCalc = input[i].y;
+          }
+          newObj.push({ x: input[i].x, y: usageWeightCalc });
+        }
+        return newObj;
+      } catch (e) {
+        logger.error(e, "ERROR with convert incremental");
+      }
+    }
+    function sumValuesGroupByDate(input) {
+      try {
+        var dates = {};
+        input.forEach((dv) => (dates[dv.x] = (dates[dv.x] || 0) + dv.y));
+        return Object.keys(dates).map((date) => ({
+          x: new Date(date),
+          y: dates[date],
+        }));
+      } catch (e) {
+        logger.error(e, "Error with summing group values...");
+      }
+    }
+    printerStatistics.historyByDay.forEach((usage) => {
+      usage.data = sumValuesGroupByDate(usage.data);
+    });
+
+    // printerStatistics.historyByDayIncremental.forEach((usage) => {
+    //   usage.data = sumValuesGroupByDate(usage.data);
+    // });
+    //
+    // printerStatistics.historyByDayIncremental.forEach((usage) => {
+    //   usage.data = convertIncremental(usage.data);
+    // });
+
+    return printerStatistics;
+  }
 
   static async generate(farmPrinter, filamentManager) {
     fmToggle = filamentManager;
@@ -157,6 +463,13 @@ class PrinterClean {
       if (typeof farmPrinter.systemChecks !== "undefined") {
         farmPrinter.systemChecks.cleaning.information.status = "warning";
       }
+      // Clearing out in prep for 1.1.11
+      const printerGroups = [];
+      // // Append the groups by JOIN
+      // const printerGroups = await PrinterGroup.find({
+      //     printers: farmPrinter._id,
+      // }).exec();
+
       const sortedPrinter = {
         // eslint-disable-next-line no-underscore-dangle
         _id: farmPrinter._id,
@@ -176,6 +489,7 @@ class PrinterClean {
           desc: farmPrinter.webSocketDescription,
         },
         group: farmPrinter.group,
+        groups: printerGroups,
         printerURL: farmPrinter.printerURL,
         cameraURL: farmPrinter.camURL,
         apikey: farmPrinter.apikey,
@@ -193,6 +507,7 @@ class PrinterClean {
         updateAvailable: farmPrinter.updateAvailable,
         display: true,
         order: farmPrinter.sortIndex,
+        octoPrintSystemInfo: farmPrinter.octoPrintSystemInfo,
       };
 
       if (
@@ -220,10 +535,12 @@ class PrinterClean {
         farmPrinter.current
       );
       sortedPrinter.connectionOptions = farmPrinter.options;
+
       if (
-        typeof sortedPrinter.connectionOptions !== "undefined" &&
+        !!sortedPrinter?.connectionOptions &&
         !sortedPrinter.connectionOptions.ports.includes("AUTO")
       ) {
+        sortedPrinter.connectionOptions.baudrates.unshift(0);
         sortedPrinter.connectionOptions.ports.unshift("AUTO");
       }
       sortedPrinter.terminal = await PrinterClean.sortTerminal(
@@ -260,7 +577,7 @@ class PrinterClean {
       }
 
       const printerIndex = _.findIndex(printerControlList, function (o) {
-        return o.printerName == sortedPrinter.printerName;
+        return o.printerName === sortedPrinter.printerName;
       });
       if (printerIndex !== -1) {
         printerControlList[printerIndex] = {
@@ -282,7 +599,7 @@ class PrinterClean {
 
       printersInformation[farmPrinter.sortIndex] = sortedPrinter;
     } catch (e) {
-      console.log(e);
+      logger.error(e);
     }
   }
 
@@ -297,7 +614,7 @@ class PrinterClean {
       if (
         typeof printerErrorLogs[e].errorLog.printerID !== "undefined" &&
         JSON.stringify(printerErrorLogs[e].errorLog.printerID) ===
-          JSON.stringify(farmPrinter._id)
+        JSON.stringify(farmPrinter._id)
       ) {
         let errorFormat = {
           date: printerErrorLogs[e].errorLog.endDate,
@@ -667,7 +984,7 @@ class PrinterClean {
         ["desc"]
       );
     } catch (err) {
-      console.log(`Current Operations issue: ${err}`);
+      logger.error(`Current Operations issue: ${err}`);
     }
   }
 
@@ -787,7 +1104,8 @@ class PrinterClean {
                   let target = "";
                   if (
                     printer.tools !== null &&
-                    printer.tools[0][keys[k]].actual !== null
+                    printer.tools[0][keys[k]].actual !== null &&
+                    printer.tools[0][keys[k]].target >= 10
                   ) {
                     actual = `Chamber A: ${
                       printer.tools[0][keys[k]].actual
@@ -801,7 +1119,8 @@ class PrinterClean {
                   }
                   if (
                     printer.tools !== null &&
-                    printer.tools[0][keys[k]].target !== null
+                    printer.tools[0][keys[k]].target !== null &&
+                    printer.tools[0][keys[k]].target >= 10
                   ) {
                     target = `Chamber T: ${
                       printer.tools[0][keys[k]].target
@@ -824,7 +1143,8 @@ class PrinterClean {
                   let target = "";
                   if (
                     printer.tools !== null &&
-                    printer.tools[0][keys[k]].actual !== null
+                    printer.tools[0][keys[k]].actual !== null &&
+                    printer.tools[0][keys[k]].target >= 10
                   ) {
                     actual = `Bed A: ${printer.tools[0][keys[k]].actual}°C `;
                     arrayOtherActual.push(printer.tools[0][keys[k]].actual);
@@ -836,7 +1156,8 @@ class PrinterClean {
                   }
                   if (
                     printer.tools !== null &&
-                    printer.tools[0][keys[k]].target !== null
+                    printer.tools[0][keys[k]].target !== null &&
+                    printer.tools[0][keys[k]].target >= 10
                   ) {
                     target = `Bed T: ${printer.tools[0][keys[k]].target}°C `;
                     arrayOtherTarget.push(printer.tools[0][keys[k]].target);
@@ -854,7 +1175,8 @@ class PrinterClean {
                   let target = "";
                   if (
                     printer.tools !== null &&
-                    printer.tools[0][keys[k]].actual !== null
+                    printer.tools[0][keys[k]].actual !== null &&
+                    printer.tools[0][keys[k]].target >= 10
                   ) {
                     actual = `Tool ${toolNumber} A: ${
                       printer.tools[0][keys[k]].actual
@@ -868,7 +1190,8 @@ class PrinterClean {
                   }
                   if (
                     printer.tools !== null &&
-                    printer.tools[0][keys[k]].target !== null
+                    printer.tools[0][keys[k]].target !== null &&
+                    printer.tools[0][keys[k]].target >= 10
                   ) {
                     target = `Tool ${toolNumber} T: ${
                       printer.tools[0][keys[k]].target
@@ -1084,70 +1407,75 @@ class PrinterClean {
         ];
         const currentIAQ = [];
         const enviromentalData = posts;
-        for (let i = 0; i < enviromentalData.length; i++) {
-          if (
-            typeof enviromentalData[i].temperature !== "undefined" &&
-            enviromentalData[i].temperature !== null
-          ) {
-            currentEnviromentalData[0].data.push({
-              x: enviromentalData[i].date,
-              y: enviromentalData[i].temperature.toFixed(2),
-            });
-            dashboardStatistics.currentTemperature = enviromentalData[
-              0
-            ].temperature.toFixed(2);
-          } else {
-            currentEnviromentalData[0].data.push({
-              x: enviromentalData[i].date,
-              y: null,
-            });
-          }
-          if (
-            typeof enviromentalData[i].humidity !== "undefined" &&
-            enviromentalData[i].humidity !== null
-          ) {
-            currentEnviromentalData[1].data.push({
-              x: enviromentalData[i].date,
-              y: enviromentalData[i].humidity.toFixed(0),
-            });
-            dashboardStatistics.currentHumidity = enviromentalData[0].humidity;
-          } else {
-            currentEnviromentalData[1].data.push({
-              x: enviromentalData[i].date,
-              y: null,
-            });
-          }
-          if (
-            typeof enviromentalData[i].pressure !== "undefined" &&
-            enviromentalData[i].pressure !== null
-          ) {
-            currentEnviromentalData[2].data.push({
-              x: enviromentalData[i].date,
-              y: enviromentalData[i].pressure.toFixed(0),
-            });
-            dashboardStatistics.currentPressure = enviromentalData[
-              0
-            ].pressure.toFixed(0);
-          } else {
-            currentEnviromentalData[2].data.push({
-              x: enviromentalData[i].date,
-              y: null,
-            });
-          }
-          if (
-            typeof enviromentalData[i].iaq !== "undefined" &&
-            enviromentalData[i].iaq !== null
-          ) {
-            currentEnviromentalData[3].data.push({
-              x: enviromentalData[i].date,
-              y: enviromentalData[i].iaq.toFixed(0),
-            });
-            dashboardStatistics.currentIAQ = enviromentalData[0].iaq.toFixed(0);
-          } else {
-            currentEnviromentalData[3].data.push({
-              x: enviromentalData[i].date,
-              y: null,
-            });
+        if (!!enviromentalData) {
+          for (let i = 0; i < enviromentalData.length; i++) {
+            if (
+              typeof enviromentalData[i].temperature !== "undefined" &&
+              enviromentalData[i].temperature !== null
+            ) {
+              currentEnviromentalData[0].data.push({
+                x: enviromentalData[i].date,
+                y: enviromentalData[i].temperature.toFixed(2),
+              });
+              dashboardStatistics.currentTemperature = enviromentalData[0].temperature.toFixed(
+                2
+              );
+            } else {
+              currentEnviromentalData[0].data.push({
+                x: enviromentalData[i].date,
+                y: null,
+              });
+            }
+            if (
+              typeof enviromentalData[i].humidity !== "undefined" &&
+              enviromentalData[i].humidity !== null
+            ) {
+              currentEnviromentalData[1].data.push({
+                x: enviromentalData[i].date,
+                y: enviromentalData[i].humidity.toFixed(0),
+              });
+              dashboardStatistics.currentHumidity =
+                enviromentalData[0].humidity;
+            } else {
+              currentEnviromentalData[1].data.push({
+                x: enviromentalData[i].date,
+                y: null,
+              });
+            }
+            if (
+              typeof enviromentalData[i].pressure !== "undefined" &&
+              enviromentalData[i].pressure !== null
+            ) {
+              currentEnviromentalData[2].data.push({
+                x: enviromentalData[i].date,
+                y: enviromentalData[i].pressure.toFixed(0),
+              });
+              dashboardStatistics.currentPressure = enviromentalData[0].pressure.toFixed(
+                0
+              );
+            } else {
+              currentEnviromentalData[2].data.push({
+                x: enviromentalData[i].date,
+                y: null,
+              });
+            }
+            if (
+              typeof enviromentalData[i].iaq !== "undefined" &&
+              enviromentalData[i].iaq !== null
+            ) {
+              currentEnviromentalData[3].data.push({
+                x: enviromentalData[i].date,
+                y: enviromentalData[i].iaq.toFixed(0),
+              });
+              dashboardStatistics.currentIAQ = enviromentalData[0].iaq.toFixed(
+                0
+              );
+            } else {
+              currentEnviromentalData[3].data.push({
+                x: enviromentalData[i].date,
+                y: null,
+              });
+            }
           }
         }
         dashboardStatistics.enviromentalData = currentEnviromentalData;
@@ -1310,9 +1638,9 @@ class PrinterClean {
       farmStats[0].heatMap = heatMap;
       dashboardStatistics.utilisationGraph = heatMap;
       farmStats[0].markModified("heatMap");
-      farmStats[0].save().catch((e) => console.log(e));
+      farmStats[0].save().catch((e) => logger.error(e));
     } catch (e) {
-      console.log("HEAT MAP ISSUE", e);
+      logger.error("HEAT MAP ISSUE", e);
     }
   }
 
@@ -1401,22 +1729,18 @@ class PrinterClean {
     }
     return "Farm information inititialised...";
   }
+  static returnAllOctoPrintVersions() {
+    const printers = this.returnPrintersInformation();
+
+    const versionArray = [];
+
+    printers.forEach((printer) => {
+      versionArray.push(printer.octoPrintVersion);
+    });
+    return versionArray;
+  }
 }
+
 module.exports = {
   PrinterClean,
 };
-
-//Hacky database check due to shoddy layout of code...
-const mongoose = require("mongoose");
-
-if (interval === false) {
-  interval = setInterval(() => {
-    if (mongoose.connection.readyState === 1) {
-      PrinterClean.sortCurrentOperations(printersInformation);
-      PrinterClean.statisticsStart();
-      PrinterClean.createPrinterList(printersInformation, fmToggle);
-    }
-  }, 2500);
-}
-// PrinterClean.statisticsStart();
-// PrinterClean.createPrinterList(printersInformation, fmToggle);

@@ -1,9 +1,11 @@
-FROM alpine:3.12 as base
+# https://pkgs.alpinelinux.org/packages?name=nodejs&branch=v3.13
+# Results in NodeJS 14.16.1-r1
+FROM alpine:3.13 as base
 
 RUN apk add --no-cache --virtual .base-deps \
     nodejs \
     npm \
-    tini 
+    tini
 
 RUN npm install -g pm2
 
@@ -36,4 +38,4 @@ USER octofarm
 WORKDIR /app
 
 ENTRYPOINT [ "/sbin/tini", "--" ]
-CMD [ "./docker/alpine-entrypoint.sh" ]
+CMD [ "./docker/entrypoint.sh" ]

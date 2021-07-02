@@ -1,7 +1,140 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+
+## [v1.1.13-hotfix]
+
+### Added
+    - Ability to use the AUTO option for baudrate.
+    - Ability to click update button to go to system page.
+
+### Changed
+    - Completely re-worked the auto updater mechanism.
+    - Completely re-worked the npm check and installation mechanism for the auto updater 
+
+### Removed
+
+### Fixed
+    - Fixed #500: Connection to printer would fail when both baudrate and port are set to "AUTO"
+    - Fixed #501: Restart command fired too fast which resulted in no confirmation/error notification on client. 
+    - Fixed #495: Check for update would result in double notifications for airgapped farms.
+    - Fixed #498: Fix package version not always preset and synced correctly when not running npm commands, f.e. pm2.
+
+
+## [v1.1.13]
+
+### Added
+    - Added #361: OctoFarm release check and notification sets ground work for automatic updates.
+    - Added #373: Migrated MongoUri in config/db.js to new .env file format as MONGO=...
+    - Added #374: Migrated server port to .env file as OCTOFARM_PORT=...
+    - Added #351: Background image now ignored and copied from default if not present at start.
+    - Added #382: Add in ability for OctoFarm to update itself with the current pm2/git implementation.
+        - This is actioned by two new section inside Server -> System. Two new buttons "Force Check", "Update". 
+    - Added #421: OctoFarm data dump. Generates a bundled zip file for download that includes all system logs and a service_information.txt file.
+    - Added #296: Ability to define your own page title with an Environment Variable
+
+### Changed
+    - Disabled Restart button when not using pm2 process manager.
+    - Node 12 now not supported. Node 14 is a minimum requirement.
+
+### Removed
+    - Ability to change the port in the UI. This is now managed by environment variables. UI option will be back soon.
+
+### Fixed
+    - Fixed #240: Commands sent from the Printer Control Terminal would double wrap array.
+    - Fixed #358: Spool Manager not allowing input of decimal places.
+    - Fixed #398: Added back in power reset buttons.
+    - Fixed #353: Filament Manager Spools list is not ignoring Spools Modal pagination.
+    - Fixed #386: Server update notification would show to all users, not just Administrator group.
+    - Fixed #430: Replace user and group check with middleware.
+    - Fixed #396: History cleaner wouldn't run after print capture.
+    - Fixed #397: Thumbnails wouldn't capture on history, even with setting on.
+    - Fixed #414: History failing to generate due to missing default settings.
+    - Fixed #438: File manager fails to load due to toFixed error.
+    - Fixed #442: Re-Input catch statements for "git" commands on updater logic.
+    - Fixed #444: Add in npm functions for updater command to keep packages up to date.
+    - Fixed #439: Views not updating due to offline printer in first instance.
+    - Fixed #414: History would fail to capture due to missing settings. 
+    - Fixed #475: Loading system page would cause error in console due to missing settings.
+    - Fixed #459: Duplicate Id's on printer manager page. 
+    - Fixed #472: System page would crash if release check didn't find a release. 
+    - Fixed #460: Update and Restart commands not correctly erroring and returning to client.
+    - Fixed #468: Disable update notification and buttons to docker installs. 
+    - Fixed #452: Docker documnetation was missing path for /images.
+    - Fixed #478: Abort with a friendly message if Node version less than 14 is detected.
+    - Fixed #429 and #378: Memory/CPU graphs in system page now tolerant to missing values so it can show no matter what. 
+    
 # [Released]
+
+## [v1.1.12]
+
+### Added
+   - Added a button to System page to restart OctoFarm server.
+
+### Changed
+   - Added logging around system information as there was none originally, also a warning message when failing to generate.
+   - Pre-start script now uses 'npm ci' to make sure packages are on the latest version inside package-lock.json. 
+   - Server restart commands will no longer silently fail... It will alert you if you haven't set up OctoFarm correctly under the pm2 named service.
+
+### Fixed
+    - #342: Quotes causing issue for Windows 10 systems in package.json start up scripts.
+    - #341: System information was failing to generate on some ubuntu systems due to an outdated package. Package has been updated.
+            - The new systeminformation changed some key value pairs. Please run npm 
+    - #337: Fixed issue with file manager not loading files due to recursion issue.  
+
+### Security
+
+# [v1.1.11]
+
+### Added
+   - #274: Added full file path to file display card.
+   - Gcode Scripts are now editable.
+   - Reset Fields Button to power settings to enable a reset of them...
+   - Individual Printer Statistics: New option under the Manage section for viewing statistics about your printer.
+   - Added check against global API Key usage. Will now throw an error warning the user it is incorrect... and to generate a User or Application Key inside OctoPrint.
+   - Added the ability to export any of the database collections into a .json file to bolster any issue reports.
+
+### Changed
+   - Improved the power status error logs.
+   - #272: Improvements to the alpine image, now runs as none-root and went from around 1Gb to 268Mb in size! Big thank you to user @torresmvl for those PR's. Don't forget to email about your free t-shirt.
+   - Gcode scripts no longer require a description.
+   - Made gcode scripts wider for comments and better data input.
+   - Printer Manager Table has been updated to include Printer, OctoPrint designations:
+         - Printer: Shows current printer firmware version, model and name.
+         - OctoPrint: Shows current OctoPrint version and if on OctoPi, the version and Pi model.
+   - Printer Hourly Temperature Graph on Dashboard now only reacts when target is set. Will skip any room temperature readings.  
+
+### Fixed
+   - #223: Shutting down printers unexpectedly would keep printer in last state. - Big thanks to Chrismettal for helping me with this one.
+   - #226: Failing to fire commands to enclosure plugin using the Power Settings.
+   - Attempted fix for air gapped farms. Awaiting feedback. 
+   - #236: File Manager would fail to return to non-recursive search on blank input.
+   - Fixed the slider not showing the 10/300% changes for feedrate. 
+   - Fixed enclosure plugin commands not firing with a GET request. 
+   - Fixed: #273 Recursive search doesn't return to root folder...  
+   - #277: Fixed issue when person re-edited final slash back in... 
+   - Fixed: WOL packets been undefined.
+   - Fixed: Update cost match in history would fail.
+   - #276 - Patched issue were a user couldn't send blank fields to clear Custom Power Settings. 
+   - Fixed: Issue with autodetection of PSU control plugin causing wol settings to be destroyed.
+   - Fixed: Issue with Weekly Utilisation chart showing incorrect colours on a Float value.
+   - Fixed: #236 - Colours on Weekly Utilisation chart we're loading too dark.
+   - Fixed: #279 - API connection checked too early after powering up.
+   - Fixed: #292 - Printer Settings would fail due to missing wol settings.
+   - Fixed: #326 - Job doesn't reset when OctoPrint goes offline.
+   - Fixed: Printer Settings modal opening would throw error when OctoPrint has never been connected to farm.
+   - Fixed: Error grabbing octoprint plugin list/system/updates wouldn't correctly log an error.
+   - Fixed: Bubbling server check interval causing client to massively hang and break CPU's...
+   - Fixed: Issue with history card not loading spools tables
+   - Fixed: #297 - Issue with temperature not been applied from spool at start of a print.  
+   - Fixed: #327 - Issue with not been able to change a spool mid print/paused when not using Filament Manager Plugin.
+   - Fixed: #309 - Regression with toggle button to check filament spool is loaded before print start. 
+
+
+### Removed
+   - Printer Settings drop down, was buggy and half implemented causing issues and is less used than the Printer Control one.
+
+
 
 # [v1.1.10]
 
